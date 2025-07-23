@@ -1,65 +1,74 @@
 name: Build Unsigned IPA
 
 on:
-  workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
+  workflow_dispatch:
 
 jobs:
-  build-ipa:
-    runs-on: macos-latest # Xcode 15+ is included (supports iOS 17 SDK)
+  build:
+    name: Build IPA
+    runs-on: macos-14  # macOS runner with Xcode 15 (iOS 17 SDK)
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Xcode Version (iOS 17+ compatible)
+      - name: Select Xcode version (15.2+ for iOS 17)
         run: |
           sudo xcode-select -s /Applications/Xcode_15.2.app || sudo xcode-select -s /Applications/Xcode_15.app
           xcodebuild -version
 
-      - name: Build .xcarchive (unsigned)
+      - name: Install CocoaPods (if needed)
         run: |
+          if [ -f explt.xcworkspace ]; then
+            sudo gem install cocoapods
+            pod install
+          fi
+
+      - name: Build and archive the app
+        run: |
+          # Archive the app
           xcodebuild \
             -project explt.xcodeproj \
             -scheme explt \
             -configuration Release \
             -sdk iphoneos \
-            -archivePath $RUNNER_TEMP/app.xcarchive \
-            archive
+            -archivePath $RUNNER_TEMP/explt.xcarchive \
+            archive \
+            CODE_SIGNING_ALLOWED=NO
 
-      - name: Export IPA (unsigned)
+      - name: Create ExportOptions.plist (unsigned)
         run: |
-          cat > $RUNNER_TEMP/ExportOptions.plist <<EOL
+          cat <<EOF > $RUNNER_TEMP/ExportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
+            <key>compileBitcode</key>
+            <false/>
             <key>method</key>
             <string>development</string>
             <key>signingStyle</key>
-            <string>automatic</string>
-            <key>compileBitcode</key>
-            <false/>
+            <string>manual</string>
             <key>stripSwiftSymbols</key>
             <true/>
             <key>signingCertificate</key>
-            <string>Apple Development</string>
+            <string>-</string>
             <key>provisioningProfiles</key>
             <dict/>
-            <key>destination</key>
-            <string>export</string>
-            <key>manageAppVersionAndBuildNumber</key>
-            <false/>
           </dict>
           </plist>
-          EOL
+          EOF
 
+      - name: Export .ipa (unsigned)
+        run: |
           xcodebuild \
             -exportArchive \
-            -archivePath $RUNNER_TEMP/app.xcarchive \
+            -archivePath $RUNNER_TEMP/explt.xcarchive \
             -exportPath $RUNNER_TEMP/build \
-            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist
+            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist \
+            CODE_SIGNING_ALLOWED=NO
 
-      - name: Upload IPA artifact
+      - name: Upload unsigned IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: unsigned-ipa
