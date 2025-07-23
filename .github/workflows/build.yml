@@ -1,11 +1,11 @@
-name: "Build explt - Unsigned IPA"
+name: Build explt - Unsigned IPA
 
 on:
   workflow_dispatch:
 
 jobs:
   build_unsigned:
-    runs-on: macos-14  # macOS with Xcode 15+ (iOS 17 SDK+)
+    runs-on: macos-latest
 
     steps:
       - name: Check out repository
