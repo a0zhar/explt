@@ -1,0 +1,66 @@
+name: Build Unsigned IPA
+
+on:
+  workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
+
+jobs:
+  build-ipa:
+    runs-on: macos-latest # Xcode 15+ is included (supports iOS 17 SDK)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode Version (iOS 17+ compatible)
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.2.app || sudo xcode-select -s /Applications/Xcode_15.app
+          xcodebuild -version
+
+      - name: Build .xcarchive (unsigned)
+        run: |
+          xcodebuild \
+            -project explt.xcodeproj \
+            -scheme explt \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath $RUNNER_TEMP/app.xcarchive \
+            archive
+
+      - name: Export IPA (unsigned)
+        run: |
+          cat > $RUNNER_TEMP/ExportOptions.plist <<EOL
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>development</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>signingCertificate</key>
+            <string>Apple Development</string>
+            <key>provisioningProfiles</key>
+            <dict/>
+            <key>destination</key>
+            <string>export</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+          </dict>
+          </plist>
+          EOL
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath $RUNNER_TEMP/app.xcarchive \
+            -exportPath $RUNNER_TEMP/build \
+            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-ipa
+          path: ${{ runner.temp }}/build/*.ipa
