@@ -1,12 +1,12 @@
 name: Build Unsigned IPA
 
 on:
-  workflow_dispatch:  # Manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Build IPA
-    runs-on: macos-14  # Xcode 15+, iOS 17+ SDK preinstalled
+    name: Build IPA (with logs)
+    runs-on: macos-14 # macOS runner with Xcode 15 and iOS 17 SDK
 
     steps:
       - name: Checkout repository
@@ -24,8 +24,9 @@ jobs:
             pod install
           fi
 
-      - name: Build and archive the app (unsigned)
+      - name: Build and archive the app (with logging)
         run: |
+          LOG=$RUNNER_TEMP/archive.log
           xcodebuild \
             -project explt.xcodeproj \
             -scheme explt \
@@ -33,20 +34,42 @@ jobs:
             -sdk iphoneos \
             -archivePath $RUNNER_TEMP/explt.xcarchive \
             archive \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            | tee "$LOG"
+          
+          echo '### Build Archive Log' >> $GITHUB_STEP_SUMMARY
+          echo '```
+          tail -n 50 "$LOG" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
-      - name: Export unsigned IPA using local ExportOptions.plist
+      - name: Export unsigned IPA (with logging)
         run: |
+          LOG=$RUNNER_TEMP/export.log
           xcodebuild \
             -exportArchive \
             -archivePath $RUNNER_TEMP/explt.xcarchive \
             -exportPath $RUNNER_TEMP/build \
             -exportOptionsPlist ExportOptions.plist \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            | tee "$LOG"
+
+          echo '### IPA Export Log' >> $GITHUB_STEP_SUMMARY
+          echo '```
+          tail -n 50 "$LOG" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
           name: unsigned-ipa
           path: ${{ runner.temp }}/build/*.ipa
+          retention-days: 7
+
+      - name: Upload Xcode logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-logs
+          path: |
+            ${{ runner.temp }}/archive.log
+            ${{ runner.temp }}/export.log
           retention-days: 7
