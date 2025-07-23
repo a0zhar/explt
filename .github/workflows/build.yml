@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    name: Build IPA (with logs)
+    name: Build Unsigned IPA (with logs)
     runs-on: macos-14 # macOS runner with Xcode 15 and iOS 17 SDK
 
     steps:
@@ -35,25 +35,41 @@ jobs:
             -archivePath $RUNNER_TEMP/explt.xcarchive \
             archive \
             CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
             | tee "$LOG"
-          
+
           echo '### Build Archive Log' >> $GITHUB_STEP_SUMMARY
           echo '```
           tail -n 50 "$LOG" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-      - name: Export unsigned IPA (with logging)
+      - name: Package unsigned IPA manually (with logging)
         run: |
           LOG=$RUNNER_TEMP/export.log
-          xcodebuild \
-            -exportArchive \
-            -archivePath $RUNNER_TEMP/explt.xcarchive \
-            -exportPath $RUNNER_TEMP/build \
-            -exportOptionsPlist ExportOptions.plist \
-            CODE_SIGNING_ALLOWED=NO \
-            | tee "$LOG"
 
-          echo '### IPA Export Log' >> $GITHUB_STEP_SUMMARY
+          APP_NAME="explt"
+          XCARCHIVE="$RUNNER_TEMP/explt.xcarchive"
+          APP_PATH="$XCARCHIVE/Products/Applications/$APP_NAME.app"
+          PAYLOAD_DIR="$RUNNER_TEMP/Payload"
+          IPA_PATH="$RUNNER_TEMP/${APP_NAME}-unsigned.ipa"
+
+          echo "➡️ App path: $APP_PATH" | tee "$LOG"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "❌ .app not found at: $APP_PATH" | tee -a "$LOG"
+            exit 1
+          fi
+
+          mkdir -p "$PAYLOAD_DIR"
+          cp -r "$APP_PATH" "$PAYLOAD_DIR"
+
+          cd $RUNNER_TEMP
+          zip -r "$IPA_PATH" Payload >> "$LOG" 2>&1
+
+          echo "✅ Finished creating IPA: $IPA_PATH" | tee -a "$LOG"
+
+          echo '### IPA Packaging Log' >> $GITHUB_STEP_SUMMARY
           echo '```
           tail -n 50 "$LOG" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
@@ -62,7 +78,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: unsigned-ipa
-          path: ${{ runner.temp }}/build/*.ipa
+          path: ${{ runner.temp }}/explt-unsigned.ipa
           retention-days: 7
 
       - name: Upload Xcode logs
